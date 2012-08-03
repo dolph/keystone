@@ -15,11 +15,9 @@
 # under the License.
 
 import os
-import uuid
 
 from keystone import catalog
 from keystone.catalog.backends import templated as catalog_templated
-from keystone import exception
 from keystone import test
 
 import default_fixtures
@@ -59,19 +57,3 @@ class TestTemplatedCatalog(test.TestCase, test_backend.CatalogTests):
     def test_get_catalog(self):
         catalog_ref = self.catalog_api.get_catalog('foo', 'bar')
         self.assertDictEqual(catalog_ref, self.DEFAULT_FIXTURE)
-
-    def test_create_endpoint_404(self):
-        self.assertRaises(exception.NotImplemented,
-                          self.catalog_api.create_endpoint,
-                          uuid.uuid4().hex,
-                          {})
-
-    def test_get_endpoint_404(self):
-        self.assertRaises(exception.NotImplemented,
-                          self.catalog_api.get_endpoint,
-                          uuid.uuid4().hex)
-
-    def test_delete_endpoint_404(self):
-        self.assertRaises(exception.NotImplemented,
-                          self.catalog_api.delete_endpoint,
-                          uuid.uuid4().hex)

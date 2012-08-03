@@ -24,11 +24,7 @@ class Catalog(kvs.Base, catalog.Driver):
     def get_catalog(self, user_id, tenant_id, metadata=None):
         return self.db.get('catalog-%s-%s' % (tenant_id, user_id))
 
-    def get_service(self, service_id):
-        return self.db.get('service-%s' % service_id)
-
-    def list_services(self):
-        return self.db.get('service_list', [])
+    # service crud
 
     def create_service(self, service_id, service):
         self.db.set('service-%s' % service_id, service)
@@ -36,6 +32,12 @@ class Catalog(kvs.Base, catalog.Driver):
         service_list.add(service_id)
         self.db.set('service_list', list(service_list))
         return service
+
+    def list_services(self):
+        return self.db.get('service_list', [])
+
+    def get_service(self, service_id):
+        return self.db.get('service-%s' % service_id)
 
     def update_service(self, service_id, service):
         self.db.set('service-%s' % service_id, service)
@@ -46,6 +48,32 @@ class Catalog(kvs.Base, catalog.Driver):
         service_list = set(self.db.get('service_list', []))
         service_list.remove(service_id)
         self.db.set('service_list', list(service_list))
+
+    # endpoint crud
+
+    def create_endpoint(self, endpoint_id, endpoint):
+        self.get_service(endpoint['service_id'])
+        self.db.set('endpoint-%s' % endpoint_id, endpoint)
+        endpoint_list = set(self.db.get('endpoint_list', []))
+        endpoint_list.add(endpoint_id)
+        self.db.set('endpoint_list', list(endpoint_list))
+        return endpoint
+
+    def list_endpoints(self):
+        return self.db.get('endpoint_list', [])
+
+    def get_endpoint(self, endpoint_id):
+        return self.db.get('endpoint-%s' % endpoint_id)
+
+    def update_endpoint(self, endpoint_id, endpoint):
+        self.db.set('endpoint-%s' % endpoint_id, endpoint)
+        return endpoint
+
+    def delete_endpoint(self, endpoint_id):
+        self.db.delete('endpoint-%s' % endpoint_id)
+        endpoint_list = set(self.db.get('endpoint_list', []))
+        endpoint_list.remove(endpoint_id)
+        self.db.set('endpoint_list', list(endpoint_list))
 
     # Private interface
     def _create_catalog(self, user_id, tenant_id, data):

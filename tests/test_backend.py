@@ -72,9 +72,9 @@ class IdentityTests(object):
         self.identity_api.add_role_to_user_and_tenant(
             self.user_foo['id'], self.tenant_bar['id'], 'keystone_admin')
         user_ref, tenant_ref, metadata_ref = self.identity_api.authenticate(
-                user_id=self.user_foo['id'],
-                tenant_id=self.tenant_bar['id'],
-                password=self.user_foo['password'])
+            user_id=self.user_foo['id'],
+            tenant_id=self.tenant_bar['id'],
+            password=self.user_foo['password'])
         self.assertIn('roles', metadata_ref)
         self.assertIn('keystone_admin', metadata_ref['roles'])
 
@@ -719,20 +719,104 @@ class CatalogTests(object):
             'service_id': uuid.uuid4().hex,
         }
         self.assertRaises(exception.ServiceNotFound,
-                          self.catalog_api.create_endpoint,
+                          self.catalog_man.create_endpoint,
+                          {},
                           endpoint['id'],
                           endpoint)
 
     def test_get_endpoint_404(self):
         self.assertRaises(exception.EndpointNotFound,
-                          self.catalog_api.get_endpoint,
+                          self.catalog_man.get_endpoint,
+                          {},
                           uuid.uuid4().hex)
 
     def test_delete_endpoint_404(self):
         self.assertRaises(exception.EndpointNotFound,
-                          self.catalog_api.delete_endpoint,
+                          self.catalog_man.delete_endpoint,
+                          {},
                           uuid.uuid4().hex)
 
     def test_service_list(self):
         services = self.catalog_api.list_services()
         self.assertEqual(3, len(services))
+
+
+class PolicyTests(object):
+    def test_policy_crud(self):
+        policy_id = uuid.uuid4().hex
+        ref = {
+            'id': policy_id,
+            'policy': uuid.uuid4().hex,
+            'type': uuid.uuid4().hex,
+            'endpoint_id': uuid.uuid4().hex,
+        }
+
+        # create
+        res = self.policy_api.create_policy(policy_id, ref.copy())
+        self.assertEqual(policy_id, res['id'])
+        self.assertEqual(ref['endpoint_id'], res['endpoint_id'])
+        self.assertEqual(ref['policy'], res['policy'])
+        self.assertEqual(ref['type'], res['type'])
+
+        # read
+        res = self.policy_api.get_policy(policy_id)
+        self.assertEqual(policy_id, res['id'])
+        self.assertEqual(ref['endpoint_id'], res['endpoint_id'])
+        self.assertEqual(ref['policy'], res['policy'])
+        self.assertEqual(ref['type'], res['type'])
+
+        # list
+        res = self.policy_api.list_policies()
+        res = [x for x in res if x['id'] == policy_id][0]
+        self.assertEqual(policy_id, res['id'])
+        self.assertEqual(ref['endpoint_id'], res['endpoint_id'])
+        self.assertEqual(ref['policy'], res['policy'])
+        self.assertEqual(ref['type'], res['type'])
+
+        # update
+        ref = {
+            'id': uuid.uuid4().hex,
+            'policy': uuid.uuid4().hex,
+            'type': uuid.uuid4().hex,
+            'endpoint_id': uuid.uuid4().hex,
+        }
+        # (cannot change policy ID)
+        self.assertRaises(exception.ValidationError,
+                          self.policy_man.update_policy,
+                          {},
+                          policy_id,
+                          ref)
+        del ref['id']
+        res = self.policy_api.update_policy(policy_id, ref)
+        self.assertEqual(policy_id, res['id'])
+        self.assertEqual(ref['endpoint_id'], res['endpoint_id'])
+        self.assertEqual(ref['policy'], res['policy'])
+        self.assertEqual(ref['type'], res['type'])
+
+        # delete
+        self.policy_api.delete_policy(policy_id)
+        self.assertRaises(exception.PolicyNotFound,
+                          self.policy_man.delete_policy, {}, policy_id)
+        self.assertRaises(exception.PolicyNotFound,
+                          self.policy_man.get_policy, {}, policy_id)
+        res = self.policy_api.list_policies()
+        self.assertFalse(len([x for x in res if x['id'] == policy_id]))
+
+    def test_get_policy_404(self):
+        self.assertRaises(exception.PolicyNotFound,
+                          self.policy_man.get_policy,
+                          {},
+                          uuid.uuid4().hex)
+
+    def test_update_policy_404(self):
+        self.assertRaises(exception.PolicyNotFound,
+                          self.policy_man.update_policy,
+                          {},
+                          uuid.uuid4().hex,
+                          {})
+
+    def test_delete_policy_404(self):
+        self.assertRaises(exception.PolicyNotFound,
+                          self.policy_man.delete_policy,
+                          {},
+                          uuid.uuid4().hex)

@@ -24,6 +24,8 @@ from keystone import exception
 from keystone.identity.backends import sql as identity_sql
 from keystone import test
 from keystone.token.backends import sql as token_sql
+from keystone import policy
+from keystone.policy.backends import sql as policy_sql
 
 import default_fixtures
 import test_backend
@@ -153,4 +155,16 @@ class SqlCatalog(test.TestCase, test_backend.CatalogTests):
         sql_util.setup_test_database()
         self.catalog_api = catalog_sql.Catalog()
         self.catalog_man = catalog.Manager()
+        self.load_fixtures(default_fixtures)
+
+
+class SqlPolicy(test.TestCase, test_backend.PolicyTests):
+    def setUp(self):
+        super(SqlPolicy, self).setUp()
+        self.config([test.etcdir('keystone.conf.sample'),
+                     test.testsdir('test_overrides.conf'),
+                     test.testsdir('backend_sql.conf')])
+        sql_util.setup_test_database()
+        self.policy_api = policy_sql.Policy()
+        self.policy_man = policy.Manager()
         self.load_fixtures(default_fixtures)

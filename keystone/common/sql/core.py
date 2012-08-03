@@ -57,9 +57,26 @@ class JsonBlob(sql_types.TypeDecorator):
 
 
 class DictBase(object):
+    attributes = []
+
+    @classmethod
+    def from_dict(cls, d):
+        d = d.copy()
+
+        # shove any non-indexed properties into extra
+        extra = {}
+        for k, v in d.copy().iteritems():
+            if k not in cls.attributes and k != 'extra':
+                extra[k] = d.pop(k)
+
+        d['extra'] = extra
+        return cls(**d)
 
     def to_dict(self):
-        return dict(self.iteritems())
+        extra_copy = self.extra.copy()
+        for attr in self.__class__.attributes:
+            extra_copy[attr] = getattr(self, attr)
+        return extra_copy
 
     def __setitem__(self, key, value):
         setattr(self, key, value)

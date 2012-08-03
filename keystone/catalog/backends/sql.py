@@ -84,6 +84,11 @@ class Catalog(sql.Base, catalog.Driver):
         services = session.query(Service)
         return [s['id'] for s in list(services)]
 
+    def get_all_services(self):
+        session = self.get_session()
+        services = session.query(Service).all()
+        return [s.to_dict() for s in list(services)]
+
     def get_service(self, service_id):
         session = self.get_session()
         service_ref = session.query(Service).filter_by(id=service_id).first()
@@ -105,6 +110,21 @@ class Catalog(sql.Base, catalog.Driver):
             session.add(service)
             session.flush()
         return service.to_dict()
+
+    def update_service(self, service_id, service_ref):
+        session = self.get_session()
+        with session.begin():
+            ref = session.query(Service).filter_by(id=service_id).first()
+            if ref is None:
+                raise exception.ServiceNotFound(service_id=service_id)
+            old_dict = ref.to_dict()
+            for k in service_ref:
+                old_dict[k] = service_ref[k]
+            new_service = Service.from_dict(old_dict)
+            ref.type = new_service.type
+            ref.extra = new_service.extra
+            session.flush()
+        return ref.to_dict()
 
     # Endpoints
     def create_endpoint(self, endpoint_id, endpoint_ref):
@@ -135,6 +155,27 @@ class Catalog(sql.Base, catalog.Driver):
         session = self.get_session()
         endpoints = session.query(Endpoint)
         return [e['id'] for e in list(endpoints)]
+
+    def get_all_endpoints(self):
+        session = self.get_session()
+        endpoints = session.query(Endpoint)
+        return [e.to_dict() for e in list(endpoints)]
+
+    def update_endpoint(self, endpoint_id, endpoint_ref):
+        session = self.get_session()
+        with session.begin():
+            ref = session.query(Endpoint).filter_by(id=endpoint_id).first()
+            if ref is None:
+                raise exception.EndpointNotFound(endpoint_id=endpoint_id)
+            old_dict = ref.to_dict()
+            for k in endpoint_ref:
+                old_dict[k] = endpoint_ref[k]
+            new_endpoint = Endpoint.from_dict(old_dict)
+            ref.service_id = new_endpoint.service_id
+            ref.region = new_endpoint.region
+            ref.extra = new_endpoint.extra
+            session.flush()
+        return ref.to_dict()
 
     def get_catalog(self, user_id, tenant_id, metadata=None):
         d = dict(CONF.iteritems())
