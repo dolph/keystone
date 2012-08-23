@@ -55,7 +55,7 @@ class User(sql.ModelBase, sql.DictBase):
     __tablename__ = 'user'
     id = sql.Column(sql.String(64), primary_key=True)
     name = sql.Column(sql.String(64), unique=True, nullable=False)
-    #password = sql.Column(sql.String(64))
+    tenant_id = sql.Column(sql.String(64))
     extra = sql.Column(sql.JsonBlob())
 
     @classmethod
@@ -64,7 +64,7 @@ class User(sql.ModelBase, sql.DictBase):
         extra = {}
         for k, v in user_dict.copy().iteritems():
             # TODO(termie): infer this somehow
-            if k not in ['id', 'name', 'extra']:
+            if k not in ['id', 'name', 'tenant_id', 'extra']:
                 extra[k] = user_dict.pop(k)
 
         user_dict['extra'] = extra
@@ -73,6 +73,7 @@ class User(sql.ModelBase, sql.DictBase):
     def to_dict(self):
         extra_copy = self.extra.copy()
         extra_copy['id'] = self.id
+        extra_copy['tenant_id'] = self.tenant_id
         extra_copy['name'] = self.name
         return extra_copy
 
@@ -108,26 +109,11 @@ class Role(sql.ModelBase, sql.DictBase):
     name = sql.Column(sql.String(64), unique=True, nullable=False)
 
 
-class Metadata(sql.ModelBase, sql.DictBase):
-    __tablename__ = 'metadata'
-    #__table_args__ = (
-    #    sql.Index('idx_metadata_usertenant', 'user', 'tenant'),
-    #    )
-
+class UserTenantMetadata(sql.ModelBase, sql.DictBase):
+    __tablename__ = 'user_tenant_metadata'
     user_id = sql.Column(sql.String(64), primary_key=True)
     tenant_id = sql.Column(sql.String(64), primary_key=True)
     data = sql.Column(sql.JsonBlob())
-
-
-class UserTenantMembership(sql.ModelBase, sql.DictBase):
-    """Tenant membership join table."""
-    __tablename__ = 'user_tenant_membership'
-    user_id = sql.Column(sql.String(64),
-                         sql.ForeignKey('user.id'),
-                         primary_key=True)
-    tenant_id = sql.Column(sql.String(64),
-                           sql.ForeignKey('tenant.id'),
-                           primary_key=True)
 
 
 class Identity(sql.Base, identity.Driver):
@@ -201,11 +187,24 @@ class Identity(sql.Base, identity.Driver):
     def get_tenant_users(self, tenant_id):
         session = self.get_session()
         self.get_tenant(tenant_id)
-        user_refs = session.query(User)\
-            .join(UserTenantMembership)\
-            .filter(UserTenantMembership.tenant_id ==
-                    tenant_id)\
-            .all()
+
+        # find users with a matching default tenant_id
+        default_user_refs = session.query(User.id).filter_by(tenant_id=tenant_id).all()
+
+        # find any users with a role grant on the tenant
+        granted_user_refs = session\
+            .query(
+                UserTenantMetadata.user_id,
+                UserTenantMetadata.data)\
+            .filter(
+                UserTenantMetadata.tenant_id == tenant_id)
+
+        # we can't do a proper join because we don't use foreign keys
+        user_ids = set()
+        [user_ids.add(x[0]) for x in default_user_refs]
+        [user_ids.add(x[0]) for x in granted_user_refs if x[1].get('roles')]
+        user_refs = session.query(User).filter(User.id.in_(user_ids))
+
         return [_filter_user(user_ref.to_dict()) for user_ref in user_refs]
 
     def _get_user(self, user_id):
@@ -230,7 +229,7 @@ class Identity(sql.Base, identity.Driver):
 
     def get_metadata(self, user_id, tenant_id):
         session = self.get_session()
-        metadata_ref = session.query(Metadata)\
+        metadata_ref = session.query(UserTenantMetadata)\
                               .filter_by(user_id=user_id)\
                               .filter_by(tenant_id=tenant_id)\
                               .first()
@@ -255,49 +254,31 @@ class Identity(sql.Base, identity.Driver):
         role_refs = session.query(Role)
         return list(role_refs)
 
-    # These should probably be part of the high-level API
-    def add_user_to_tenant(self, tenant_id, user_id):
-        session = self.get_session()
-        self.get_tenant(tenant_id)
-        self.get_user(user_id)
-        q = session.query(UserTenantMembership)\
-                   .filter_by(user_id=user_id)\
-                   .filter_by(tenant_id=tenant_id)
-        rv = q.first()
-        if rv:
-            return
-
-        with session.begin():
-            session.add(UserTenantMembership(user_id=user_id,
-                                             tenant_id=tenant_id))
-            session.flush()
-
-    def remove_user_from_tenant(self, tenant_id, user_id):
-        session = self.get_session()
-        self.get_tenant(tenant_id)
-        self.get_user(user_id)
-        membership_ref = session.query(UserTenantMembership)\
-                                .filter_by(user_id=user_id)\
-                                .filter_by(tenant_id=tenant_id)\
-                                .first()
-        if membership_ref is None:
-            raise exception.NotFound('User not found in tenant')
-        with session.begin():
-            session.delete(membership_ref)
-            session.flush()
-
     def get_tenants(self):
         session = self.get_session()
         tenant_refs = session.query(Tenant).all()
         return [tenant_ref.to_dict() for tenant_ref in tenant_refs]
 
     def get_tenants_for_user(self, user_id):
+        """Returns a list of tenant ID's."""
         session = self.get_session()
-        self.get_user(user_id)
-        membership_refs = session.query(UserTenantMembership)\
-                                 .filter_by(user_id=user_id)\
-                                 .all()
-        return [x.tenant_id for x in membership_refs]
+
+        tenant_ids = set()
+
+        # start with the user's default tenant
+        user = self.get_user(user_id)
+        if user.get('tenant_id'):
+            tenant_ids.add(user['tenant_id'])
+
+        # add any tenants the user has a role on
+        metadata_refs = session.query(UserTenantMetadata)\
+            .filter_by(user_id=user_id)\
+            .all()
+        for metadata_ref in metadata_refs:
+            if metadata_ref.data.get('roles'):
+                tenant_ids.add(metadata_ref.tenant_id)
+
+        return list(tenant_ids)
 
     def get_roles_for_user_and_tenant(self, user_id, tenant_id):
         self.get_user(user_id)
@@ -386,9 +367,7 @@ class Identity(sql.Base, identity.Driver):
     def delete_user(self, user_id):
         session = self.get_session()
         with session.begin():
-            session.query(UserTenantMembership)\
-                   .filter_by(user_id=user_id).delete(False)
-            session.query(Metadata)\
+            session.query(UserTenantMetadata)\
                    .filter_by(user_id=user_id).delete(False)
             if not session.query(User).filter_by(id=user_id).delete(False):
                 raise exception.UserNotFound(user_id=user_id)
@@ -425,9 +404,9 @@ class Identity(sql.Base, identity.Driver):
     def delete_tenant(self, tenant_id):
         session = self.get_session()
         with session.begin():
-            session.query(UserTenantMembership)\
-                   .filter_by(tenant_id=tenant_id).delete(False)
-            session.query(Metadata)\
+            session.query(User)\
+                   .filter_by(tenant_id=tenant_id).update({'tenant_id': None})
+            session.query(UserTenantMetadata)\
                    .filter_by(tenant_id=tenant_id).delete(False)
             if not session.query(Tenant).filter_by(id=tenant_id).delete(False):
                 raise exception.TenantNotFound(tenant_id=tenant_id)
@@ -436,7 +415,7 @@ class Identity(sql.Base, identity.Driver):
     def create_metadata(self, user_id, tenant_id, metadata):
         session = self.get_session()
         with session.begin():
-            session.add(Metadata(user_id=user_id,
+            session.add(UserTenantMetadata(user_id=user_id,
                                  tenant_id=tenant_id,
                                  data=metadata))
             session.flush()
@@ -446,7 +425,7 @@ class Identity(sql.Base, identity.Driver):
     def update_metadata(self, user_id, tenant_id, metadata):
         session = self.get_session()
         with session.begin():
-            metadata_ref = session.query(Metadata)\
+            metadata_ref = session.query(UserTenantMetadata)\
                                   .filter_by(user_id=user_id)\
                                   .filter_by(tenant_id=tenant_id)\
                                   .first()

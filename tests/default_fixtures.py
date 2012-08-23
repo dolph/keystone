@@ -22,12 +22,12 @@ TENANTS = [
 
 # NOTE(ja): a role of keystone_admin and attribute "is_admin" is done in setUp
 USERS = [
-    {'id': 'foo', 'name': 'FOO', 'password': 'foo2', 'tenants': ['bar']},
-    {'id': 'two', 'name': 'TWO', 'password': 'two2', 'tenants': ['baz']},
+    {'id': 'foo', 'name': 'FOO', 'password': 'foo2', 'tenant_id': 'bar'},
+    {'id': 'two', 'name': 'TWO', 'password': 'two2', 'tenant_id': 'baz'},
     {'id': 'no_meta',
      'name': 'NO_META',
      'password': 'no_meta2',
-     'tenants': ['baz']},
+     'tenant_id': 'baz'},
 ]
 
 METADATA = [

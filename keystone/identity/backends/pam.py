@@ -92,12 +92,6 @@ class PamIdentity(identity.Driver):
     def list_roles(self):
         raise NotImplementedError()
 
-    def add_user_to_tenant(self, tenant_id, user_id):
-        pass
-
-    def remove_user_from_tenant(self, tenant_id, user_id):
-        pass
-
     def get_all_tenants(self):
         raise NotImplementedError()
 

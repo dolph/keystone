@@ -48,7 +48,6 @@ FIXTURE = {
         {'tenant_id': 'proj1', 'user_id': 'user1'},
         {'tenant_id': 'proj4', 'user_id': 'user4'},
         {'tenant_id': 'proj1', 'user_id': 'user2'},
-        {'tenant_id': 'proj2', 'user_id': 'user2'},
         {'tenant_id': 'proj1', 'user_id': 'user3'},
     ],
     'ec2_credentials': [
@@ -123,13 +122,15 @@ class MigrateNovaAuth(test.TestCase):
 
         roles = self.identity_api.list_roles()
         role_names = set([role['name'] for role in roles])
-        self.assertEqual(role_names, set(['role2', 'role1', 'role3']))
+        expected = ['member', 'role2', 'role1', 'role3']
+        self.assertEqual(role_names, set(expected))
 
         assignment_map = {
-            'user1': {'proj1': ['role1', 'role2']},
-            'user2': {'proj1': ['role1'], 'proj2': ['role1', 'role2']},
-            'user3': {'proj1': ['role3']},
-            'user4': {'proj4': ['role1']},
+            'user1': {'proj1': ['member', 'role1', 'role2']},
+            'user2': {'proj1': ['member', 'role1'],
+                      'proj2': ['role1', 'role2']},
+            'user3': {'proj1': ['member', 'role3']},
+            'user4': {'proj4': ['member', 'role1']},
         }
 
         for (old_user, old_tenant_map) in assignment_map.iteritems():

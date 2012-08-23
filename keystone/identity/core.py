@@ -122,26 +122,6 @@ class Driver(object):
         """
         raise exception.NotImplemented()
 
-    # NOTE(termie): seven calls below should probably be exposed by the api
-    #               more clearly when the api redesign happens
-    def add_user_to_tenant(self, tenant_id, user_id):
-        """Add user to a tenant without an explicit role relationship.
-
-        :raises: keystone.exception.TenantNotFound,
-                 keystone.exception.UserNotFound
-
-        """
-        raise exception.NotImplemented()
-
-    def remove_user_from_tenant(self, tenant_id, user_id):
-        """Remove user from a tenant without an explicit role relationship.
-
-        :raises: keystone.exception.TenantNotFound,
-                 keystone.exception.UserNotFound
-
-        """
-        raise exception.NotImplemented()
-
     def get_all_tenants(self):
         """FIXME(dolph): Lists all tenants in the system? I'm not sure how this
                          is different from get_tenants, why get_tenants isn't
@@ -482,8 +462,6 @@ class UserController(wsgi.Application):
         user_ref['id'] = user_id
         new_user_ref = self.identity_api.create_user(
             context, user_id, user_ref)
-        if tenant_id:
-            self.identity_api.add_user_to_tenant(context, tenant_id, user_id)
         return {'user': new_user_ref}
 
     def update_user(self, context, user_id, user):
@@ -514,11 +492,7 @@ class UserController(wsgi.Application):
         return self.update_user(context, user_id, user)
 
     def update_user_tenant(self, context, user_id, user):
-        """Update the default tenant."""
-        self.assert_admin(context)
-        # ensure that we're a member of that tenant
-        tenant_id = user.get('tenantId')
-        self.identity_api.add_user_to_tenant(context, tenant_id, user_id)
+        """Update the user's default tenant."""
         return self.update_user(context, user_id, user)
 
 
@@ -585,9 +559,6 @@ class RoleController(wsgi.Application):
             raise exception.NotImplemented(message='User roles not supported: '
                                                    'tenant_id required')
 
-        # This still has the weird legacy semantics that adding a role to
-        # a user also adds them to a tenant
-        self.identity_api.add_user_to_tenant(context, tenant_id, user_id)
         self.identity_api.add_role_to_user_and_tenant(
             context, user_id, tenant_id, role_id)
         role_ref = self.identity_api.get_role(context, role_id)
@@ -605,16 +576,8 @@ class RoleController(wsgi.Application):
             raise exception.NotImplemented(message='User roles not supported: '
                                                    'tenant_id required')
 
-        # This still has the weird legacy semantics that adding a role to
-        # a user also adds them to a tenant, so we must follow up on that
         self.identity_api.remove_role_from_user_and_tenant(
             context, user_id, tenant_id, role_id)
-        roles = self.identity_api.get_roles_for_user_and_tenant(
-            context, user_id, tenant_id)
-        if not roles:
-            self.identity_api.remove_user_from_tenant(
-                context, tenant_id, user_id)
-        return
 
     # COMPAT(diablo): CRUD extension
     def get_role_refs(self, context, user_id):
@@ -654,7 +617,6 @@ class RoleController(wsgi.Application):
         # TODO(termie): for now we're ignoring the actual role
         tenant_id = role.get('tenantId')
         role_id = role.get('roleId')
-        self.identity_api.add_user_to_tenant(context, tenant_id, user_id)
         self.identity_api.add_role_to_user_and_tenant(
             context, user_id, tenant_id, role_id)
         role_ref = self.identity_api.get_role(context, role_id)
@@ -679,8 +641,3 @@ class RoleController(wsgi.Application):
         role_id = role_ref_ref.get('roleId')[0]
         self.identity_api.remove_role_from_user_and_tenant(
             context, user_id, tenant_id, role_id)
-        roles = self.identity_api.get_roles_for_user_and_tenant(
-            context, user_id, tenant_id)
-        if not roles:
-            self.identity_api.remove_user_from_tenant(
-                context, tenant_id, user_id)

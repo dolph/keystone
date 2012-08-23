@@ -402,47 +402,6 @@ class IdentityTests(object):
                           role['id'],
                           role)
 
-    def test_add_user_to_tenant(self):
-        self.identity_api.add_user_to_tenant(self.tenant_bar['id'],
-                                             self.user_foo['id'])
-        tenants = self.identity_api.get_tenants_for_user(self.user_foo['id'])
-        self.assertIn(self.tenant_bar['id'], tenants)
-
-    def test_add_user_to_tenant_404(self):
-        self.assertRaises(exception.TenantNotFound,
-                          self.identity_api.add_user_to_tenant,
-                          uuid.uuid4().hex,
-                          self.user_foo['id'])
-
-        self.assertRaises(exception.UserNotFound,
-                          self.identity_api.add_user_to_tenant,
-                          self.tenant_bar['id'],
-                          uuid.uuid4().hex)
-
-    def test_remove_user_from_tenant(self):
-        self.identity_api.add_user_to_tenant(self.tenant_bar['id'],
-                                             self.user_foo['id'])
-        self.identity_api.remove_user_from_tenant(self.tenant_bar['id'],
-                                                  self.user_foo['id'])
-        tenants = self.identity_api.get_tenants_for_user(self.user_foo['id'])
-        self.assertNotIn(self.tenant_bar['id'], tenants)
-
-    def test_remove_user_from_tenant_404(self):
-        self.assertRaises(exception.TenantNotFound,
-                          self.identity_api.remove_user_from_tenant,
-                          uuid.uuid4().hex,
-                          self.user_foo['id'])
-
-        self.assertRaises(exception.UserNotFound,
-                          self.identity_api.remove_user_from_tenant,
-                          self.tenant_bar['id'],
-                          uuid.uuid4().hex)
-
-        self.assertRaises(exception.NotFound,
-                          self.identity_api.remove_user_from_tenant,
-                          self.tenant_baz['id'],
-                          self.user_foo['id'])
-
     def test_get_tenants_for_user_404(self):
         self.assertRaises(exception.UserNotFound,
                           self.identity_api.get_tenants_for_user,
@@ -471,8 +430,8 @@ class IdentityTests(object):
                 'name': uuid.uuid4().hex,
                 'password': uuid.uuid4().hex}
         self.identity_api.create_user(user['id'], user)
-        self.identity_api.add_user_to_tenant(self.tenant_bar['id'],
-                                             user['id'])
+        self.identity_api.add_role_to_user_and_tenant(
+            self.user_foo['id'], self.tenant_bar['id'], 'keystone_admin')
         self.identity_api.delete_user(user['id'])
         self.assertRaises(exception.UserNotFound,
                           self.identity_api.get_tenants_for_user,

@@ -124,11 +124,7 @@ class LegacyMigration(object):
             # track internal ids
             self._user_map[x.get('id')] = new_dict['id']
             # create
-            #print 'create_user(%s, %s)' % (new_dict['id'], new_dict)
             self.identity_driver.create_user(new_dict['id'], new_dict)
-            if new_dict.get('tenant_id'):
-                self.identity_driver.add_user_to_tenant(new_dict['tenant_id'],
-                                                        new_dict['id'])
 
     def _migrate_roles(self):
         for x in self._data['roles']:
@@ -150,12 +146,6 @@ class LegacyMigration(object):
             user_id = self._user_map[x['user_id']]
             tenant_id = self._tenant_map[x['tenant_id']]
             role_id = self._role_map[x['role_id']]
-
-            try:
-                self.identity_driver.add_user_to_tenant(tenant_id, user_id)
-            except Exception:
-                pass
-
             self.identity_driver.add_role_to_user_and_tenant(
                 user_id, tenant_id, role_id)
 

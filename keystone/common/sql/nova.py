@@ -20,6 +20,7 @@ import uuid
 
 from keystone.common import logging
 from keystone.contrib.ec2.backends import sql as ec2_sql
+from keystone import exception
 from keystone.identity.backends import sql as identity_sql
 
 
@@ -30,9 +31,9 @@ def import_auth(data):
     identity_api = identity_sql.Identity()
     tenant_map = _create_tenants(identity_api, data['tenants'])
     user_map = _create_users(identity_api, data['users'])
-    _create_memberships(identity_api, data['user_tenant_list'],
-                        user_map, tenant_map)
     role_map = _create_roles(identity_api, data['roles'])
+    _create_memberships(identity_api, data['user_tenant_list'],
+                        role_map, user_map, tenant_map)
     _assign_roles(identity_api, data['role_user_tenant_list'],
                   role_map, user_map, tenant_map)
 
@@ -76,12 +77,35 @@ def _create_users(api, users):
     return user_map
 
 
-def _create_memberships(api, memberships, user_map, tenant_map):
+def _create_memberships(api, memberships, role_map, user_map, tenant_map):
+    """Grants a 'member' role to each user-tenant pair."""
+    if 'member' in role_map:
+        role_id = role_map['member']
+    else:
+        try:
+            role_id = _generate_uuid()
+            member_role = {
+                'id': role_id,
+                'name': 'member',
+            }
+
+            LOG.debug('Create role %s' % member_role)
+            api.create_role(role_id, member_role)
+        except exception.Conflict:
+            LOG.debug('A "member" role already exists? Searching for it...')
+            member_role = [r for r in api.list_roles()
+                           if r['name'] == 'member'][0]
+            LOG.debug('"member" role %s' % member_role)
+            role_id = member_role['id']
+
+        role_map['member'] = role_id
+
     for membership in memberships:
         user_id = user_map[membership['user_id']]
         tenant_id = tenant_map[membership['tenant_id']]
-        LOG.debug('Add user %s to tenant %s' % (user_id, tenant_id))
-        api.add_user_to_tenant(tenant_id, user_id)
+        LOG.debug('Assign "member" role %s to user %s on tenant %s' %
+                  (role_id, user_id, tenant_id))
+        api.add_role_to_user_and_tenant(user_id, tenant_id, role_id)
 
 
 def _create_roles(api, roles):

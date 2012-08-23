@@ -25,7 +25,6 @@ def _filter_user(user_ref):
     if user_ref:
         user_ref = user_ref.copy()
         user_ref.pop('password', None)
-        user_ref.pop('tenants', None)
     return user_ref
 
 
@@ -90,9 +89,20 @@ class Identity(kvs.Base, identity.Driver):
 
     def get_tenant_users(self, tenant_id):
         self.get_tenant(tenant_id)
+
+        # find users with default tenancy
         user_keys = filter(lambda x: x.startswith("user-"), self.db.keys())
         user_refs = [self.db.get(key) for key in user_keys]
-        return filter(lambda x: tenant_id in x['tenants'], user_refs)
+        user_refs = filter(lambda x: tenant_id == x.get('tenant_id'), user_refs)
+
+        # find users with an explicit role grant
+        prefix = 'user-tenant-metadata-%s-' % tenant_id
+        metadata_keys = filter(lambda x: x.startswith(prefix), self.db.keys())
+        user_ids = [key[len(prefix):] for key in metadata_keys if self.db.get(key).get('roles')]
+        for user_id in user_ids:
+            user_refs.append(self.get_user(user_id))
+
+        return list(user_refs)
 
     def _get_user(self, user_id):
         try:
@@ -114,7 +124,7 @@ class Identity(kvs.Base, identity.Driver):
 
     def get_metadata(self, user_id, tenant_id):
         try:
-            return self.db.get('metadata-%s-%s' % (tenant_id, user_id))
+            return self.db.get('user-tenant-metadata-%s-%s' % (tenant_id, user_id))
         except exception.NotFound:
             raise exception.MetadataNotFound()
 
@@ -132,27 +142,23 @@ class Identity(kvs.Base, identity.Driver):
         role_ids = self.db.get('role_list', [])
         return [self.get_role(x) for x in role_ids]
 
-    # These should probably be part of the high-level API
-    def add_user_to_tenant(self, tenant_id, user_id):
-        self.get_tenant(tenant_id)
-        user_ref = self._get_user(user_id)
-        tenants = set(user_ref.get('tenants', []))
-        tenants.add(tenant_id)
-        self.update_user(user_id, {'tenants': list(tenants)})
-
-    def remove_user_from_tenant(self, tenant_id, user_id):
-        self.get_tenant(tenant_id)
-        user_ref = self._get_user(user_id)
-        tenants = set(user_ref.get('tenants', []))
-        try:
-            tenants.remove(tenant_id)
-        except KeyError:
-            raise exception.NotFound('User not found in tenant')
-        self.update_user(user_id, {'tenants': list(tenants)})
-
     def get_tenants_for_user(self, user_id):
         user_ref = self._get_user(user_id)
-        return user_ref.get('tenants', [])
+
+        # find user-tenant relationships with roles
+        prefix = 'user-tenant-metadata-'
+        suffix = '-%s' % user_id
+        metadata_keys = filter(
+            lambda x: x.startswith(prefix) and x.endswith(suffix),
+            self.db.keys())
+        metadata_keys = filter(lambda x: self.db.get(x).get('roles'), metadata_keys)
+        tenant_ids = set(x[len(prefix):-len(suffix)] for x in metadata_keys)
+
+        # include the default tenant
+        if 'tenant_id' in user_ref:
+            tenant_ids.add(user_ref['tenant_id'])
+
+        return list(tenant_ids)
 
     def get_roles_for_user_and_tenant(self, user_id, tenant_id):
         self.get_user(user_id)
@@ -308,15 +314,15 @@ class Identity(kvs.Base, identity.Driver):
         self.db.delete('tenant-%s' % tenant_id)
 
     def create_metadata(self, user_id, tenant_id, metadata):
-        self.db.set('metadata-%s-%s' % (tenant_id, user_id), metadata)
+        self.db.set('user-tenant-metadata-%s-%s' % (tenant_id, user_id), metadata)
         return metadata
 
     def update_metadata(self, user_id, tenant_id, metadata):
-        self.db.set('metadata-%s-%s' % (tenant_id, user_id), metadata)
+        self.db.set('user-tenant-metadata-%s-%s' % (tenant_id, user_id), metadata)
         return metadata
 
     def delete_metadata(self, user_id, tenant_id):
-        self.db.delete('metadata-%s-%s' % (tenant_id, user_id))
+        self.db.delete('user-tenant-metadata-%s-%s' % (tenant_id, user_id))
 
     def create_role(self, role_id, role):
         try:

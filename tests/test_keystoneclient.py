@@ -85,7 +85,7 @@ class CompatTestCase(test.TestCase):
         if tenant_ref is None:
             for user in default_fixtures.USERS:
                 if user['id'] == user_ref['id']:
-                    tenant_id = user['tenants'][0]
+                    tenant_id = user['tenant_id']
         else:
             tenant_id = tenant_ref['id']
 
@@ -854,9 +854,15 @@ class KcMasterTestCase(CompatTestCase, KeystoneClientTests):
         for i in range(2):
             tenant_id = uuid.uuid4().hex
             tenant = {'name': 'tenant-%s' % tenant_id, 'id': tenant_id}
+            role_id = uuid.uuid4().hex
+            role = {'name': 'role-%s' % role_id, 'id': role_id}
             self.identity_api.create_tenant(tenant_id, tenant)
-            self.identity_api.add_user_to_tenant(tenant_id,
-                                                 self.user_foo['id'])
+            self.identity_api.create_role(role_id, role)
+            self.identity_api.add_role_to_user_and_tenant(
+                self.user_foo['id'],
+                tenant_id,
+                role_id)
+
 
         tenants = client.tenants.list()
         self.assertEqual(len(tenants), 3)
@@ -880,9 +886,14 @@ class KcMasterTestCase(CompatTestCase, KeystoneClientTests):
         for i in range(2):
             tenant_id = uuid.uuid4().hex
             tenant = {'name': 'tenant-%s' % tenant_id, 'id': tenant_id}
+            role_id = uuid.uuid4().hex
+            role = {'name': 'role-%s' % role_id, 'id': role_id}
             self.identity_api.create_tenant(tenant_id, tenant)
-            self.identity_api.add_user_to_tenant(tenant_id,
-                                                 self.user_foo['id'])
+            self.identity_api.create_role(role_id, role)
+            self.identity_api.add_role_to_user_and_tenant(
+                self.user_foo['id'],
+                tenant_id,
+                role_id)
 
         tenants = client.tenants.list()
         self.assertEqual(len(tenants), 3)
